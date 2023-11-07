@@ -1,0 +1,44 @@
+env_files = [
+    "./.env"
+]
+
+[env]
+CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
+
+[tasks.format]
+install_crate = "rustfmt"
+args = ["fmt", "--", "--emit-files"]
+
+[tasks.build]
+command = "cargo"
+args = ["build"]
+dependencies = ["format"]
+
+[tasks.test]
+command = "cargo"
+args = ["test"]
+dependencies = ["build"]
+
+[tasks.run]
+command = "cargo"
+args = ["run"]
+
+[tasks.installmysqldef]
+command = "../scripts/install_mysqldef.sh"
+
+[tasks.migrate]
+command = "../bin/mysqldef"
+args = [
+	"-u",
+	"${MYSQL_USER}",
+	"-p",
+	"${MYSQL_PASSWORD}",
+	"-h",
+	"${MYSQL_HOST}",
+	"-P",
+	"${MYSQL_PORT}",
+	"--file",
+	"../database/schema.sql",
+	"${MYSQL_DATABASE}"
+]
+dependencies = ["installmysqldef"]
