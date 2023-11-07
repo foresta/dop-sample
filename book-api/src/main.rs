@@ -1,6 +1,8 @@
+mod api;
+mod error;
+mod model;
+
 use axum::extract::Query;
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
@@ -34,22 +36,14 @@ struct BookItemResponse {
     title: String,
 }
 
-struct AppError(anyhow::Error);
-impl IntoResponse for AppError {
-    fn into_response(self) -> Response {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Internal Server Error: {}", self.0),
-        )
-            .into_response()
-    }
-}
-impl<E> From<E> for AppError
-where
-    E: Into<anyhow::Error>,
-{
-    fn from(err: E) -> Self {
-        Self(err.into())
+impl From<model::SearchedBookItem> for BookItemResponse {
+    fn from(model: model::SearchedBookItem) -> BookItemResponse {
+        BookItemResponse {
+            id: model.id,
+            isbn10: model.isbn10,
+            isbn13: model.isbn13,
+            title: model.title,
+        }
     }
 }
 
@@ -62,67 +56,15 @@ struct SearchQuery {
     q: String,
 }
 
-async fn search(query: Query<SearchQuery>) -> Result<Json<BookResponse>, AppError> {
+async fn search(query: Query<SearchQuery>) -> Result<Json<BookResponse>, error::AppError> {
     println!("search_query: {}", query.q);
 
-    let resp = search_book_by_title(query.q.to_owned()).await?;
+    let searched_books = api::search_book_by_title(query.q.to_owned()).await?;
+    let resp = BookResponse {
+        items: searched_books
+            .into_iter()
+            .map(|book| BookItemResponse::from(book))
+            .collect(),
+    };
     Ok(Json(resp))
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct BookAPIResponse {
-    total_items: i64,
-    items: Vec<BookItem>,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct BookItem {
-    id: String,
-    volume_info: BookVolumeInfo,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct BookVolumeInfo {
-    title: String,
-    industry_identifiers: Vec<BookIndustryIdentifier>,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct BookIndustryIdentifier {
-    r#type: String,
-    identifier: String,
-}
-
-async fn search_book_by_title(search_query: String) -> anyhow::Result<BookResponse> {
-    let req_url = format!("https://www.googleapis.com/books/v1/volumes?q={search_query}");
-    let res = reqwest::get(req_url).await?;
-
-    let body: BookAPIResponse = res.json().await?;
-
-    let items: Vec<BookItemResponse> = body
-        .items
-        .into_iter()
-        .map(|item: BookItem| {
-            let mut isbn_iterator = item.volume_info.industry_identifiers.into_iter();
-            let isbn13: Option<String> = isbn_iterator
-                .find(|i| i.r#type == "ISBN_13")
-                .map(|i| i.identifier.to_owned());
-            let isbn10: Option<String> = isbn_iterator
-                .find(|i| i.r#type == "ISBN_10")
-                .map(|i| i.identifier.to_owned());
-
-            BookItemResponse {
-                id: item.id,
-                isbn10: isbn10.to_owned(),
-                isbn13: isbn13.to_owned(),
-                title: item.volume_info.title,
-            }
-        })
-        .collect();
-
-    Ok(BookResponse { items })
 }
