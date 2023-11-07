@@ -1,3 +1,4 @@
+use axum::extract::Query;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -56,8 +57,15 @@ async fn index() -> &'static str {
     "OK"
 }
 
-async fn search() -> Result<Json<BookResponse>, AppError> {
-    let resp = search_book_by_title("データ指向".to_owned()).await?;
+#[derive(Deserialize)]
+struct SearchQuery {
+    q: String,
+}
+
+async fn search(query: Query<SearchQuery>) -> Result<Json<BookResponse>, AppError> {
+    println!("search_query: {}", query.q);
+
+    let resp = search_book_by_title(query.q.to_owned()).await?;
     Ok(Json(resp))
 }
 
@@ -94,7 +102,6 @@ async fn search_book_by_title(search_query: String) -> anyhow::Result<BookRespon
     let res = reqwest::get(req_url).await?;
 
     let body: BookAPIResponse = res.json().await?;
-    println!("Body\n{:?}", body);
 
     let items: Vec<BookItemResponse> = body
         .items
